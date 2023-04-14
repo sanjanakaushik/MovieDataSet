@@ -1,0 +1,38 @@
+library(dplyr)
+
+
+moviesData = read.csv("/Users/lucasmazza/Desktop/IMDB-Movie-Data.csv")
+
+#feature engineering: 
+
+#drop title, description; not relevant 
+# print out the column names
+print(colnames(moviesData))
+#select cols
+moviesData <- moviesData[, c("Rank", "Genre","Director","Actors","Year","Runtime..Minutes.","Rating","Votes","Revenue..Millions.","Metascore")]
+#encode the genre
+moviesData$Genre <- as.numeric(factor(moviesData$Genre))
+#encode the Director: 
+moviesData$Director <- as.numeric(factor(moviesData$Director))
+
+
+#get actor who played main character: 
+
+findNames <- strsplit(moviesData$Actors, ", ")
+
+# extract the first and last names from each list
+mainActor <- sapply(findNames, function(x) x[1])
+moviesData$Actors = mainActor
+
+#encode the actors: 
+moviesData$Actors <- as.numeric(factor(moviesData$Actors))
+moviesData[0:10]
+
+#Adjusting column names for runTime and revenue
+moviesData = rename(moviesData, Runtime_Minutes = Runtime..Minutes., Revenue_Millions = Revenue..Millions.)
+moviesData
+
+
+#export csv: 
+
+write.csv(moviesData, "/Users/lucasmazza/Desktop/Stat512Final/adjustedMoviesData",row.names = FALSE)
