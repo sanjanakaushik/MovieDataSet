@@ -31,8 +31,8 @@ genre_freq <- table(moviesData$Genre)
 sorted_freq <- sort(genre_freq, decreasing = TRUE)
 sorted_freq
 # Get the top 5 most popular genres
-top_5_genres <- names(sorted_freq)[1:5]
-moviesData <- subset(moviesData, Genre %in% top_5_genres)
+top_10_genres <- names(sorted_freq)[1:10]
+moviesData <- subset(moviesData, Genre %in% top_10_genres)
 nrow(moviesData)
 moviesData$Genre <- as.numeric(factor(moviesData$Genre))
 
@@ -127,7 +127,7 @@ sum(is.na(moviesData))
 #all NA values have been taken care of. 
 nrow(moviesData)
 #feature analysis:
-write.csv(moviesData, "/Users/lucasmazza/Desktop/Stat512Final/FINALDATASET",row.names = FALSE)
+#write.csv(moviesData, "/Users/lucasmazza/Desktop/Stat512Final/FINALDATASET",row.names = FALSE)
 
 
 #max votes: 
@@ -194,10 +194,35 @@ anova(model)
 #Reduced model = Y = B0 + Bnew(X2+X6) + error
 #Ha: B2 ≠ B6
 #Full model = Y = B0 + B2*X2+ B6*X6 + error
-modelReduced = lm(y~I(x2 + x6), data = moviesData) 
-fullModel = lm(y~x1+x2+x6, data = moviesData)
-anova(modelReduced, fullModel)
 
+
+
+fullModel = lm(y~x2+x6, data = moviesData)
+
+anova(fullModel)
+qqPlot(fullModel)
+
+resNorm = residuals(fullModel)
+resNorm
+residualPlots(fullModel)
+bptest(fullModel)
+
+shapiro.test(resNorm)
+
+vif(lm(y~x2+x6, data = moviesData))
+vif(lm(y~x6+x2, data = moviesData))
+#no multicollinarity issues
+dfbetasPlots(fullModel)
+influencePlot(fullModel, id.method = "cook", plot = TRUE)
+
+cooksd <- cooks.distance(fullModel)
+
+
+# Create a bar plot of Cook's distances
+plot(cooksd, type = "h", lwd = 2, ylab = "Cook's Distance", main = "Cook's Distance Plot")
+
+# Add a horizontal line at Cook's distance of 0.5
+abline(h = 0.5, col = "red")
 #conclusion: run time and revenue do not have the same impact on the number of votes a movie received
 
 
@@ -211,7 +236,6 @@ moviesData$Genre
 Action <- ifelse(moviesData$Genre %in% c(1), 1,0)
 Drama  <- ifelse(moviesData$Genre %in% c(2), 1,0)
 Comedy <- ifelse(moviesData$Genre %in% c(3), 1,0)
-
 Reduced = lm(y~x1+x3)
 Fullmodel = lm(y ~ x1 + x3 + x1*Action + x1*Drama + x1*Comedy, data = moviesData)
 summary(Fullmodel)
@@ -220,16 +244,20 @@ summary(Fullmodel)
   
 #model analysis: 
 #residuals: 
+library(car)
 resNorm = residuals(Fullmodel)
-
+resNorm
 residualPlots(Fullmodel)
 plot(fitted(Fullmodel),residuals(Fullmodel), xlab = "Fitted Values", ylab = "Residuals",main = "Residuals vs Fitted Values Plot")
 #we can say that the assumption of constant varience has been violated here
 shapiro.test(resNorm)
 
-#presence of outliers. 
+#presence of outliers:
 qqline(resNorm)
-qqplot(resNorm)
+qqPlot(resNorm)
+
+#VIF: 
+
 #non-normal distribution of the residuals
 
 #Robust bootstrapping to address the problem of outliers and deviations from normality: 
@@ -245,20 +273,48 @@ abline(h = threshold, col = "blue")
 influential <- which(cooksd > threshold)
 influential
 
-boot.Robust <- function(data, indicies,maxit = 100) {
-
-  modelRobust <- rlm(y ~ x1 + x3 + x1*Action + x1*Drama + x1*Comedy + x1*Adventure + x1 * Crime + x1 * Biography+x1*Animation + x1 *Horror + x1*Mystery + 
-                     x1*Thriller , moviesData)
-  coefficients(modelRobust)
+# Define function for bootstrapping
+boot.wls <- function(data, indicies, maxit = 20) {
+  data1 <- data[indicies, ]
+  y = data1$Votes
+  x1 = data1$Rating
+  x3 = data1$Genre
+ 
+  # Fit initial model
+  Fullmodel <- lm(y ~ x1 + x3 + x1*Action + x1*Drama + x1*Comedy, data = data1)
+  
+  # Compute weight vector
+  wts1 <- 1/fitted(lm(abs(residuals(Fullmodel)) ~ x1 + x3, data = data1))^2
+  
+  # Fit WLS model using weight vector
+  modelWLS <- lm(y ~ x1 + x3 + x1*Action + x1*Drama + x1*Comedy, data = data1, weights = wts1)
+  
+  return(coef(modelWLS))
 }
 
-Robust.boot <- boot(data = moviesData, statistic = boot.Robust, R = 100, maxit = 100)
-Robust.boot
+# Run bootstrap with 100 iterations
+WLS.boot <- boot(data = moviesData, statistic = boot.wls, R = 100, maxit = 20)
+summary(WLS.boot)
+# View results
+WLS.boot
 
+wts1 <- 1/fitted(lm(abs(residuals(lm(y~x1 + x3 + x1*Action + x1*Drama + x1*Comedy, data)))~x1 + x3 + x1*Action + x1*Drama + x1*Comedy, data = data))^2
 
+# Fit WLS model using weight vector
+modelWLS <- lm(y ~ x1 + x3 + x1*Action + x1*Drama + x1*Comedy, data = data, weights = wts1)
 
+residualPlot(modelWLS)
+residualPlot(Fullmodel)
+plot(fitted(Fullmodel), rstandard(Fullmodel))
+abline(lm(rstandard(Fullmodel) ~ fitted(Fullmodel)), col = "red")
+
+plot(fitted(modelWLS), rstandard(modelWLS))
+abline(lm(rstandard(modelWLS) ~ fitted(modelWLS)), col = "red")
+
+qqPlot(modelWLS)
+qqPlot(Fullmodel)
 #conclusion
-anova(Reduced, Fullmodel)
+anova(Reduced, modelWLS)
 
 
 #question 3: Do Rating, Runtime, and Revenue have a significant effect on the number of votes?
